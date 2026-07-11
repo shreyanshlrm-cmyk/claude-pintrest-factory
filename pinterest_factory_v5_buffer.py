@@ -342,7 +342,12 @@ def create_pin_on_buffer(pin):
                 "pinterest": {
                     "boardServiceId": BUFFER_BOARD_ID,
                     "title": pin["title"][:100],
-                    "link": pin["link"],
+                    "url": pin["link"],
+                    # NOTE: Buffer's own roadmap/known-issues page (as of mid-2026) states
+                    # this "url" field is currently accepted but NOT persisted/saved on
+                    # their backend for Pinterest posts — a bug on Buffer's side, not ours.
+                    # Pins may post successfully without the destination link attached
+                    # until Buffer fixes this. Worth checking pins manually until then.
                 }
             },
         }
