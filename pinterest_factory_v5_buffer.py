@@ -112,8 +112,7 @@ IMAGE_STYLE_POOL = [
 # ──────────────────────────────────────────────
 
 def generate_pin_text(keyword):
-    prompt = f"""You are a Pinterest content strategist for a dropshipping affiliate page promoting Rippy Club.
-Generate content for a Pinterest pin targeting: "{keyword}"
+    prompt = f"""You are an experienced dropshipping operator writing genuinely useful Pinterest tips on: "{keyword}"
 
 Return ONLY valid JSON, no markdown, no backticks, no explanation:
 {{
@@ -126,11 +125,14 @@ Return ONLY valid JSON, no markdown, no backticks, no explanation:
   ]
 }}
 
-Rules:
-- Headline should feel like real practical advice, not hype, but still make someone stop scrolling
-- Tips should be genuinely useful, specific, and non-generic dropshipping advice
-- No emojis anywhere
-- Keep everything punchy and specific, not vague"""
+CRITICAL RULES for the 3 tips:
+- Each tip must be genuinely actionable, specific dropshipping advice a real operator would give — something someone could actually go do today.
+- NEVER mention Rippy Club, any brand name, "check out", "use our", or any promotional/product plug inside the tips. The tips are pure free value, zero selling.
+- Avoid vague generic filler like "optimize your listings" or "leverage ads" with no specifics — give a concrete mechanism, number, tool category, or method instead.
+- Vary the angle across pins: sometimes about supplier vetting, sometimes ad testing methodology, sometimes pricing psychology, sometimes customer service, sometimes niche selection criteria, sometimes cash flow / return policy specifics — don't default to the same 3 tips every time.
+- No emojis anywhere.
+
+The headline can hint at a bigger opportunity, but the 3 tips themselves must stand alone as real, specific, useful advice with no brand mention."""
 
     try:
         if not GROQ_API_KEY:
@@ -143,7 +145,7 @@ Rules:
         data = {
             "model": "llama-3.3-70b-versatile",
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.7,
+            "temperature": 0.85,
             "max_tokens": 500,
         }
         r = requests.post("https://api.groq.com/openai/v1/chat/completions",
@@ -159,11 +161,27 @@ Rules:
         text = re.sub(r"```json|```", "", text).strip()
         parsed = json.loads(text)
 
-        # Basic shape validation with fallback padding if Groq returns fewer than 3 tips
+        # Reject/replace any tip that slipped in a brand mention despite instructions
+        banned_terms = ["rippy", "club", "check out", "use our", "join our"]
         tips = parsed.get("tips", [])
-        while len(tips) < 3:
-            tips.append({"label": "Stay Consistent", "text": "Most people quit right before it starts working."})
-        parsed["tips"] = tips[:3]
+        clean_tips = []
+        for t in tips:
+            combined = (t.get("label", "") + " " + t.get("text", "")).lower()
+            if any(term in combined for term in banned_terms):
+                continue
+            clean_tips.append(t)
+
+        fallback_pool = [
+            {"label": "Vet Supplier Response Time", "text": "Message 5 suppliers and only work with ones replying under 24 hours."},
+            {"label": "Test With Small Ad Spend", "text": "Run $20-30 per product before deciding it's a loser."},
+            {"label": "Watch Your Refund Policy", "text": "A clear 30-day policy reduces chargebacks more than reviews do."},
+            {"label": "Price With Psychology", "text": "End prices in .97 or .99 — it measurably lifts conversion rate."},
+            {"label": "Check Real Shipping Times", "text": "Order your own product first to see what customers actually experience."},
+        ]
+        while len(clean_tips) < 3:
+            clean_tips.append(random.choice(fallback_pool))
+
+        parsed["tips"] = clean_tips[:3]
         return parsed
 
     except Exception as e:
@@ -172,9 +190,9 @@ Rules:
             "title": f"{keyword.title()}",
             "seo_title": f"{keyword.title()} — Complete Beginner Guide 2025",
             "tips": [
-                {"label": "Pick One Niche", "text": "Stop jumping between products before giving one a real shot."},
-                {"label": "Test Before Scaling", "text": "Validate demand with small ad spend before going all in."},
-                {"label": "Track Your Numbers", "text": "Know your margins before you ever run a single ad."},
+                {"label": "Vet Supplier Response Time", "text": "Message 5 suppliers and only work with ones replying under 24 hours."},
+                {"label": "Test With Small Ad Spend", "text": "Run $20-30 per product before deciding it's a loser."},
+                {"label": "Watch Your Refund Policy", "text": "A clear 30-day policy reduces chargebacks more than reviews do."},
             ],
         }
 
