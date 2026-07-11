@@ -326,12 +326,21 @@ def create_pin_on_buffer(pin):
         "input": {
             "channelId": BUFFER_CHANNEL_ID,
             "text": pin["description"],
-            "imageUrl": pin["image_url"],
+            "assets": [
+                {
+                    "image": {
+                        "url": pin["image_url"],
+                        "metadata": {
+                            "altText": pin["title"][:100]
+                        }
+                    }
+                }
+            ],
             "schedulingType": "automatic",
             "mode": "shareNow",   # publish immediately instead of queueing
             "metadata": {
                 "pinterest": {
-                    "boardId": BUFFER_BOARD_ID,
+                    "boardServiceId": BUFFER_BOARD_ID,
                     "title": pin["title"][:100],
                     "link": pin["link"],
                 }
