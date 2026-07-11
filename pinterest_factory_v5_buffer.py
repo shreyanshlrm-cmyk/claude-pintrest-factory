@@ -112,20 +112,25 @@ IMAGE_STYLE_POOL = [
 # ──────────────────────────────────────────────
 
 def generate_pin_text(keyword):
-    prompt = f"""You are a Pinterest SEO expert for a dropshipping affiliate page promoting Rippy Club.
+    prompt = f"""You are a Pinterest content strategist for a dropshipping affiliate page promoting Rippy Club.
 Generate content for a Pinterest pin targeting: "{keyword}"
 
 Return ONLY valid JSON, no markdown, no backticks, no explanation:
 {{
-  "title": "Pinterest pin title under 100 chars, SEO optimized, includes keyword naturally, compelling",
-  "hook": "6-8 word bold statement for image text overlay, no emojis, punchy and stops the scroll"
+  "title": "Bold clicky headline, under 60 chars, makes dropshippers curious about money/results, includes or implies the keyword topic",
+  "seo_title": "Pinterest pin title under 100 chars, SEO optimized, includes keyword naturally",
+  "tips": [
+    {{"label": "3-5 word bold tip label", "text": "One short sentence (max 90 chars) expanding on the tip"}},
+    {{"label": "3-5 word bold tip label", "text": "One short sentence (max 90 chars) expanding on the tip"}},
+    {{"label": "3-5 word bold tip label", "text": "One short sentence (max 90 chars) expanding on the tip"}}
+  ]
 }}
 
 Rules:
-- Title must feel helpful and searchable
-- Hook must make someone stop scrolling instantly
+- Headline should feel like real practical advice, not hype, but still make someone stop scrolling
+- Tips should be genuinely useful, specific, and non-generic dropshipping advice
 - No emojis anywhere
-- Keep it direct and specific"""
+- Keep everything punchy and specific, not vague"""
 
     try:
         if not GROQ_API_KEY:
@@ -139,7 +144,7 @@ Rules:
             "model": "llama-3.3-70b-versatile",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.7,
-            "max_tokens": 200,
+            "max_tokens": 500,
         }
         r = requests.post("https://api.groq.com/openai/v1/chat/completions",
                          headers=headers, json=data, timeout=30)
@@ -152,57 +157,77 @@ Rules:
 
         text = raw["choices"][0]["message"]["content"].strip()
         text = re.sub(r"```json|```", "", text).strip()
-        return json.loads(text)
+        parsed = json.loads(text)
+
+        # Basic shape validation with fallback padding if Groq returns fewer than 3 tips
+        tips = parsed.get("tips", [])
+        while len(tips) < 3:
+            tips.append({"label": "Stay Consistent", "text": "Most people quit right before it starts working."})
+        parsed["tips"] = tips[:3]
+        return parsed
 
     except Exception as e:
         print(f"  [Groq error] {e} — using fallback")
         return {
-            "title": f"{keyword.title()} — Complete Beginner Guide 2025",
-            "hook": "Most beginners never learn this",
+            "title": f"{keyword.title()}",
+            "seo_title": f"{keyword.title()} — Complete Beginner Guide 2025",
+            "tips": [
+                {"label": "Pick One Niche", "text": "Stop jumping between products before giving one a real shot."},
+                {"label": "Test Before Scaling", "text": "Validate demand with small ad spend before going all in."},
+                {"label": "Track Your Numbers", "text": "Know your margins before you ever run a single ad."},
+            ],
         }
 
 # ──────────────────────────────────────────────
-# IMAGE GENERATION — Pollinations.ai
+# FLAT BACKGROUND — no more Pollinations/AI-art backgrounds.
+# Solid cream/white tones with a subtle line-art shipping box icon.
 # ──────────────────────────────────────────────
 
-def generate_background_image(style_prompt):
-    encoded = requests.utils.quote(style_prompt)
-    url = f"https://image.pollinations.ai/prompt/{encoded}?width={PIN_WIDTH}&height={PIN_HEIGHT}&nologo=true&seed={random.randint(1,99999)}"
-    try:
-        print("  Generating image...")
-        r = requests.get(url, timeout=60)
-        if r.status_code == 200:
-            Path(OUTPUT_DIR).mkdir(exist_ok=True)
-            temp = f"{OUTPUT_DIR}/temp_{random.randint(1000,9999)}.jpg"
-            with open(temp, "wb") as f:
-                f.write(r.content)
-            img = Image.open(temp).convert("RGB")
-            os.remove(temp)
-            return img
-    except Exception as e:
-        print(f"  [Pollinations error] {e}")
-    return Image.new("RGB", (PIN_WIDTH, PIN_HEIGHT), color=(15, 15, 25))
+BACKGROUND_TONES = [
+    (250, 248, 244),  # warm white
+    (247, 243, 236),  # soft cream
+    (245, 241, 232),  # light ivory
+]
+
+def generate_background_image(_unused_arg=None):
+    tone = random.choice(BACKGROUND_TONES)
+    img = Image.new("RGB", (PIN_WIDTH, PIN_HEIGHT), color=tone)
+    draw = ImageDraw.Draw(img)
+    draw_box_icon(draw, x=PIN_WIDTH - 260, y=90, size=170, color=(225, 218, 205))
+    return img
+
+def draw_box_icon(draw, x, y, size, color):
+    """Simple line-art shipping box — subtle background texture that's
+    actually ON-TOPIC for dropshipping, instead of generic abstract art."""
+    w = size
+    d = size * 0.35  # depth offset for the 3D look
+    lw = 4
+    # top face (diamond)
+    top = [(x, y + d), (x + w/2, y), (x + w, y + d), (x + w/2, y + 2*d)]
+    draw.line(top + [top[0]], fill=color, width=lw, joint="curve")
+    # front-left face
+    draw.line([(x, y + d), (x, y + d + w*0.7), (x + w/2, y + 2*d + w*0.7), (x + w/2, y + 2*d)], fill=color, width=lw, joint="curve")
+    # front-right face
+    draw.line([(x + w, y + d), (x + w, y + d + w*0.7), (x + w/2, y + 2*d + w*0.7)], fill=color, width=lw, joint="curve")
+    # tape line down the middle front
+    draw.line([(x + w/2, y + 2*d), (x + w/2, y + 2*d + w*0.7)], fill=color, width=lw)
 
 # ──────────────────────────────────────────────
-# PIN COMPOSER
+# PIN COMPOSER — flat design, numbered tips layout
 # ──────────────────────────────────────────────
 
-def add_overlay(img):
-    # Lighter overlay now since background is white/cream — a heavy dark
-    # overlay would defeat the calm premium look. Just a soft white wash
-    # for text contrast instead.
-    overlay = Image.new("RGBA", img.size, (255, 255, 255, 60))
-    img = img.convert("RGBA")
-    return Image.alpha_composite(img, overlay).convert("RGB")
-
-def get_font(size):
-    paths = [
+def get_font(size, bold=True):
+    bold_paths = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
         "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-        "C:/Windows/Fonts/arialbd.ttf",
     ]
-    for p in paths:
+    regular_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+    ]
+    for p in (bold_paths if bold else regular_paths):
         if os.path.exists(p):
             try:
                 return ImageFont.truetype(p, size)
@@ -229,28 +254,73 @@ def wrap_by_pixel_width(draw, text, font, max_width):
         lines.append(current)
     return lines
 
-def draw_centered(draw, text, y, font, color=(30,30,30), max_width=820):
+def draw_wrapped(draw, text, x, y, font, color, max_width, line_height=None, align="left"):
+    """Draws left-aligned (or centered) wrapped text starting at (x, y). Returns the y position after the block."""
     lines = wrap_by_pixel_width(draw, text, font, max_width)
-    lh = font.size + 14
-    total = len(lines) * lh
-    cy = y - total // 2
+    lh = line_height or (font.size + 10)
+    cy = y
     for line in lines:
-        bbox = draw.textbbox((0,0), line, font=font)
-        tw = bbox[2] - bbox[0]
-        x = (PIN_WIDTH - tw) // 2
-        draw.text((x+1, cy+1), line, font=font, fill=(255,255,255))  # soft light shadow instead of black
-        draw.text((x, cy), line, font=font, fill=color)
+        draw_x = x
+        if align == "center":
+            bbox = draw.textbbox((0, 0), line, font=font)
+            tw = bbox[2] - bbox[0]
+            draw_x = x - tw // 2
+        draw.text((draw_x, cy), line, font=font, fill=color)
         cy += lh
+    return cy
 
-def compose_pin(bg, hook_text):
-    img = add_overlay(bg.copy())
+def compose_pin(bg, content):
+    img = bg.copy()
     draw = ImageDraw.Draw(img)
-    charcoal = (60, 50, 40)
-    draw_centered(draw, "DROPSHIPPING ADVICE", 120, get_font(34), color=charcoal, max_width=780)
-    draw.rectangle([(140,152),(PIN_WIDTH-140,155)], fill=charcoal)
-    draw_centered(draw, hook_text.upper(), PIN_HEIGHT//2 - 60, get_font(58), color=(20,20,20), max_width=780)
-    draw.rectangle([(140,PIN_HEIGHT-222),(PIN_WIDTH-140,PIN_HEIGHT-219)], fill=charcoal)
-    draw_centered(draw, "Follow the link to earn", PIN_HEIGHT-160, get_font(40), color=charcoal, max_width=780)
+
+    charcoal = (35, 30, 25)
+    accent = (150, 110, 60)   # warm brown/gold accent for numbers + CTA
+    subtext_gray = (90, 85, 78)
+
+    margin = 90
+    max_text_width = PIN_WIDTH - (margin * 2)
+
+    # Kicker
+    kicker_font = get_font(30)
+    draw.text((margin, 70), "DROPSHIPPING ADVICE", font=kicker_font, fill=accent)
+    draw.rectangle([(margin, 112), (margin + 260, 115)], fill=accent)
+
+    # Headline
+    title_font = get_font(64)
+    y = draw_wrapped(draw, content["title"].upper(), margin, 150, title_font, charcoal, max_text_width, line_height=70)
+
+    # Numbered tips
+    y += 40
+    number_font = get_font(46)
+    label_font = get_font(38)
+    text_font = get_font(30)
+
+    for i, tip in enumerate(content["tips"], start=1):
+        circle_d = 64
+        draw.ellipse([(margin, y), (margin + circle_d, y + circle_d)], outline=accent, width=4)
+        num_bbox = draw.textbbox((0, 0), str(i), font=number_font)
+        nw = num_bbox[2] - num_bbox[0]
+        nh = num_bbox[3] - num_bbox[1]
+        draw.text((margin + circle_d/2 - nw/2, y + circle_d/2 - nh/2 - num_bbox[1]), str(i), font=number_font, fill=accent)
+
+        text_x = margin + circle_d + 30
+        text_max_width = max_text_width - circle_d - 30
+
+        label_y_end = draw_wrapped(draw, tip["label"], text_x, y, label_font, charcoal, text_max_width, line_height=44)
+        draw_wrapped(draw, tip["text"], text_x, label_y_end + 4, text_font, subtext_gray, text_max_width, line_height=36)
+
+        y = max(label_y_end, y + circle_d) + 55
+
+    # CTA banner at the bottom
+    banner_h = 140
+    banner_y = PIN_HEIGHT - banner_h
+    draw.rectangle([(0, banner_y), (PIN_WIDTH, PIN_HEIGHT)], fill=accent)
+    cta_font = get_font(38)
+    cta_text = "Follow the link to start earning"
+    bbox = draw.textbbox((0, 0), cta_text, font=cta_font)
+    tw = bbox[2] - bbox[0]
+    draw.text(((PIN_WIDTH - tw) // 2, banner_y + banner_h//2 - 20), cta_text, font=cta_font, fill=(255, 255, 255))
+
     return img
 
 # ──────────────────────────────────────────────
@@ -264,9 +334,9 @@ def generate_pins():
 
     for i, kw in enumerate(keywords, 1):
         print(f"\n[Pin {i}/{PINS_PER_RUN}] {kw}")
-        pin_text = generate_pin_text(kw)
-        bg = generate_background_image(random.choice(IMAGE_STYLE_POOL))
-        img = compose_pin(bg, pin_text["hook"])
+        content = generate_pin_text(kw)
+        bg = generate_background_image()
+        img = compose_pin(bg, content)
 
         ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         fname = f"pin_{i:02d}_{ts}.jpg"
@@ -281,7 +351,7 @@ def generate_pins():
         pins.append({
             "filepath":    fpath,
             "filename":    fname,
-            "title":       pin_text["title"],
+            "title":       content["seo_title"],
             "description": desc,
             "link":        AFFILIATE_LINK,
         })
