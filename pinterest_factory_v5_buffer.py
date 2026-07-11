@@ -98,13 +98,13 @@ DESCRIPTION_TEMPLATES = [
 ]
 
 IMAGE_STYLE_POOL = [
-    "minimalist dark background with gold accents, luxury aesthetic, clean modern design, no text, abstract wealth visualization, high quality",
-    "clean white background, modern business aesthetic, subtle geometric shapes, professional, no text, premium feel, sharp",
-    "deep navy background, subtle light rays, modern clean design, wealth and success aesthetic, no text, cinematic",
-    "dark gradient background black to dark purple, subtle particles, premium luxury feel, no text, abstract, polished",
-    "clean minimal dark background, soft golden light rays, modern entrepreneurship aesthetic, no text, high quality, sleek",
-    "dark moody background with subtle green money tones, luxury wealth aesthetic, no text, abstract, professional",
-    "midnight black background with subtle blue light accents, tech meets wealth aesthetic, no text, clean, modern",
+    "clean white marble background, soft natural light, calm premium aesthetic, subtle beige and cream tones, no text, minimalist, high quality, editorial photography style",
+    "soft ivory and white background, gentle warm light, airy premium feel, subtle linen texture, no text, clean, elegant, high quality",
+    "pale cream background with soft shadows, minimal luxury aesthetic, subtle gold thread details, no text, calm and refined, high quality",
+    "white studio background with soft diffused light, modern premium aesthetic, subtle beige gradient, no text, clean, professional",
+    "light neutral background, soft morning light, calm and grounded premium feel, subtle warm undertones, no text, high quality, sharp",
+    "off-white textured background, gentle natural shadows, quiet luxury aesthetic, no text, minimal, high quality, soft focus edges",
+    "soft white and champagne gradient background, calm elegant aesthetic, subtle light rays, no text, clean, premium, polished",
 ]
 
 # ──────────────────────────────────────────────
@@ -188,7 +188,10 @@ def generate_background_image(style_prompt):
 # ──────────────────────────────────────────────
 
 def add_overlay(img):
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 150))
+    # Lighter overlay now since background is white/cream — a heavy dark
+    # overlay would defeat the calm premium look. Just a soft white wash
+    # for text contrast instead.
+    overlay = Image.new("RGBA", img.size, (255, 255, 255, 60))
     img = img.convert("RGBA")
     return Image.alpha_composite(img, overlay).convert("RGB")
 
@@ -207,10 +210,27 @@ def get_font(size):
                 continue
     return ImageFont.load_default()
 
-def draw_centered(draw, text, y, font, color=(255,255,255), max_width=860):
-    avg = font.size * 0.6
-    chars = max(1, int(max_width / avg))
-    lines = textwrap.wrap(text, width=chars)
+def wrap_by_pixel_width(draw, text, font, max_width):
+    """Wraps text based on ACTUAL measured pixel width, not an estimate —
+    prevents text overflowing off the edge of the canvas."""
+    words = text.split()
+    lines = []
+    current = ""
+    for word in words:
+        trial = (current + " " + word).strip()
+        bbox = draw.textbbox((0, 0), trial, font=font)
+        width = bbox[2] - bbox[0]
+        if width <= max_width or not current:
+            current = trial
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
+
+def draw_centered(draw, text, y, font, color=(30,30,30), max_width=820):
+    lines = wrap_by_pixel_width(draw, text, font, max_width)
     lh = font.size + 14
     total = len(lines) * lh
     cy = y - total // 2
@@ -218,19 +238,19 @@ def draw_centered(draw, text, y, font, color=(255,255,255), max_width=860):
         bbox = draw.textbbox((0,0), line, font=font)
         tw = bbox[2] - bbox[0]
         x = (PIN_WIDTH - tw) // 2
-        draw.text((x+2, cy+2), line, font=font, fill=(0,0,0))
+        draw.text((x+1, cy+1), line, font=font, fill=(255,255,255))  # soft light shadow instead of black
         draw.text((x, cy), line, font=font, fill=color)
         cy += lh
 
 def compose_pin(bg, hook_text):
     img = add_overlay(bg.copy())
     draw = ImageDraw.Draw(img)
-    gold = (210, 185, 105)
-    draw_centered(draw, "DROPSHIPPING TIPS", 120, get_font(36), color=gold)
-    draw.rectangle([(100,152),(PIN_WIDTH-100,156)], fill=gold)
-    draw_centered(draw, hook_text.upper(), PIN_HEIGHT//2 - 80, get_font(72))
-    draw.rectangle([(100,PIN_HEIGHT-222),(PIN_WIDTH-100,PIN_HEIGHT-218)], fill=gold)
-    draw_centered(draw, "Link in bio — Start today", PIN_HEIGHT-160, get_font(44), color=gold)
+    charcoal = (60, 50, 40)
+    draw_centered(draw, "DROPSHIPPING ADVICE", 120, get_font(34), color=charcoal, max_width=780)
+    draw.rectangle([(140,152),(PIN_WIDTH-140,155)], fill=charcoal)
+    draw_centered(draw, hook_text.upper(), PIN_HEIGHT//2 - 60, get_font(58), color=(20,20,20), max_width=780)
+    draw.rectangle([(140,PIN_HEIGHT-222),(PIN_WIDTH-140,PIN_HEIGHT-219)], fill=charcoal)
+    draw_centered(draw, "Follow the link to earn", PIN_HEIGHT-160, get_font(40), color=charcoal, max_width=780)
     return img
 
 # ──────────────────────────────────────────────
@@ -273,6 +293,20 @@ def generate_pins():
 # COMMIT + PUSH IMAGES SO THEY HAVE PUBLIC URLS
 # ──────────────────────────────────────────────
 
+def wait_for_url_ready(url, max_attempts=8, delay=5):
+    """raw.githubusercontent.com doesn't serve a freshly pushed file instantly —
+    poll until it actually returns 200 before handing the URL to Buffer."""
+    for attempt in range(1, max_attempts + 1):
+        try:
+            r = requests.head(url, timeout=15, allow_redirects=True)
+            if r.status_code == 200:
+                return True
+            print(f"    [waiting for image to propagate] attempt {attempt}/{max_attempts}, got {r.status_code}")
+        except Exception as e:
+            print(f"    [waiting for image to propagate] attempt {attempt}/{max_attempts}, error: {e}")
+        time.sleep(delay)
+    return False
+
 def commit_and_push_images(pins):
     print("\n[Hosting] Committing pin images to repo for public URLs...")
     subprocess.run(["git", "config", "user.name", "pinterest-factory-bot"], check=True)
@@ -290,7 +324,14 @@ def commit_and_push_images(pins):
             f"https://raw.githubusercontent.com/{GITHUB_REPOSITORY}/"
             f"{GITHUB_REF_NAME}/{OUTPUT_DIR}/{pin['filename']}"
         )
-    print("  Images pushed and public URLs assigned.")
+
+    print("  Images pushed. Verifying each URL is actually live before uploading...")
+    for pin in pins:
+        ready = wait_for_url_ready(pin["image_url"])
+        if ready:
+            print(f"  Ready: {pin['filename']}")
+        else:
+            print(f"  [WARNING] {pin['filename']} never became reachable — upload will likely fail")
 
 # ──────────────────────────────────────────────
 # BUFFER UPLOAD
