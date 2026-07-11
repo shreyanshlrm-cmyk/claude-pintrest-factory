@@ -309,6 +309,15 @@ def buffer_gql(query, variables=None):
     r.raise_for_status()
     return r.json()
 
+def truncate_for_pinterest(text, limit=500):
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    last_space = cut.rfind(" ")
+    if last_space > 0:
+        cut = cut[:last_space]
+    return cut
+
 def create_pin_on_buffer(pin):
     query = """
     mutation CreatePin($input: CreatePostInput!) {
@@ -325,7 +334,7 @@ def create_pin_on_buffer(pin):
     variables = {
         "input": {
             "channelId": BUFFER_CHANNEL_ID,
-            "text": pin["description"],
+            "text": truncate_for_pinterest(pin["description"]),
             "assets": [
                 {
                     "image": {
