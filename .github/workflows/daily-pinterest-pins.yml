@@ -1,0 +1,34 @@
+name: Daily Pinterest Pins
+
+on:
+  schedule:
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed so the workflow can commit+push pin images for hosting
+
+jobs:
+  post-pins:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pillow requests
+
+      - name: Run Pinterest Factory (Buffer edition)
+        env:
+          GROQ_API_KEY:      ${{ secrets.GROQ_API_KEY }}
+          AFFILIATE_LINK:    ${{ secrets.AFFILIATE_LINK }}
+          BUFFER_API_KEY:    ${{ secrets.BUFFER_API_KEY }}
+          BUFFER_CHANNEL_ID: ${{ secrets.BUFFER_CHANNEL_ID }}
+          BUFFER_BOARD_ID:   ${{ secrets.BUFFER_BOARD_ID }}
+        run: python pinterest_factory_v5_buffer.py
