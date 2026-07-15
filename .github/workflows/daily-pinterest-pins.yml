@@ -1,19 +1,20 @@
-name: Daily Pinterest Pins
+name: Pinterest Scheduler
 
 on:
   schedule:
-    - cron: '0 2 * * *'    # batch 1 (+ up to 25 min random jitter in-script)
-    - cron: '30 6 * * *'   # batch 2
-    - cron: '0 11 * * *'   # batch 3
-    - cron: '30 15 * * *'  # batch 4
-    - cron: '0 20 * * *'   # batch 5
+    - cron: '*/30 * * * *'   # checked every 30 min; most checks just say "not yet" and exit fast
   workflow_dispatch:
+    inputs:
+      force_run:
+        description: 'Force a batch to post right now, ignoring the schedule'
+        required: false
+        default: 'false'
 
 permissions:
-  contents: write   # needed so the workflow can commit+push pin images for hosting
+  contents: write   # needed so the workflow can commit+push pin images and schedule state
 
 jobs:
-  post-pins:
+  maybe-post:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -24,11 +25,31 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Decide whether to post this run
+        id: decide
         run: |
-          pip install pillow requests
+          if [ "${{ github.event.inputs.force_run }}" == "true" ]; then
+            echo "[Scheduler] Manual force_run requested — posting now."
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            python schedule_decide.py
+          fi
+
+      - name: Commit schedule state
+        if: steps.decide.outputs.should_run == 'true' && github.event.inputs.force_run != 'true'
+        run: |
+          git config user.name "pinterest-factory-bot"
+          git config user.email "actions@github.com"
+          git add schedule_state.json
+          git commit -m "Update posting schedule state" || echo "Nothing to commit"
+          git push
+
+      - name: Install dependencies
+        if: steps.decide.outputs.should_run == 'true'
+        run: pip install pillow requests
 
       - name: Run Pinterest Factory (Buffer edition)
+        if: steps.decide.outputs.should_run == 'true'
         env:
           GROQ_API_KEY:      ${{ secrets.GROQ_API_KEY }}
           AFFILIATE_LINK:    ${{ secrets.AFFILIATE_LINK }}
